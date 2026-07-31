@@ -101,7 +101,7 @@ def install_packages(snapshot: dict[str, Any]) -> dict[str, list[str]]:
             
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", req],
+                [sys.executable, "-m", "pip", "install", req, "--break-system-packages"],
                 capture_output=True,
                 text=True
             )

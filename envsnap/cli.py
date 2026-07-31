@@ -355,6 +355,7 @@ def replay(snapshot_file: str | None, json_output: bool):
                 console.print(f"  [red]✘[/red] Missing: {', '.join(env_report['missing'])}")
                 
         console.print("\n[bold]Step 3: Installing packages[/bold]")
+        console.print("[dim]Installing packages with --break-system-packages (Debian/Ubuntu required)[/dim]")
         with console.status("Running pip install..."):
             pkg_report = install_packages(data)
             
