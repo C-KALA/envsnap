@@ -285,5 +285,97 @@ def diff(snapshot1: str | None, snapshot2: str | None, json_output: bool):
     except Exception as e:
         console.print(f"[red]Error diffing snapshots: {str(e)}[/red]")
 
+@main.command()
+@click.argument("snapshot_file", required=False)
+@click.option("--json", "json_output", is_flag=True, help="Output raw JSON instead of progress.")
+def replay(snapshot_file: str | None, json_output: bool):
+    """Replay an environment snapshot to restore its state."""
+    try:
+        from .replay import replay_environment, check_prerequisites, verify_env_keys, install_packages
+        
+        project_root = Path.cwd()
+        envsnap_dir = project_root / ".envsnap"
+        
+        if not envsnap_dir.exists():
+            console.print("[red]Error: Not an envsnap repository. Run 'envsnap init' first.[/red]")
+            return
+            
+        snap_path = None
+        if not snapshot_file:
+            snap_path = envsnap_dir / "current.snapshot"
+            if not snap_path.exists():
+                console.print("[red]Error: No current snapshot found and no specific file provided.[/red]")
+                return
+        else:
+            snap_path = Path(snapshot_file)
+            if not snap_path.is_absolute() and not snap_path.exists():
+                snap_path = envsnap_dir / "snapshots" / snapshot_file
+                if not snap_path.exists() and not snapshot_file.endswith(".snapshot"):
+                    snap_path = envsnap_dir / "snapshots" / f"{snapshot_file}.snapshot"
+                    
+        if not snap_path.exists():
+            console.print(f"[red]Error: Snapshot not found at {snap_path}[/red]")
+            return
+            
+        data = load_snapshot(snap_path)
+        if data is None:
+            console.print(f"[red]Error: Could not load snapshot from {snap_path}[/red]")
+            return
+            
+        if json_output:
+            report = replay_environment(data, project_root)
+            console.print_json(data=report)
+            return
+            
+        console.print(f"Replaying snapshot: [dim]{snap_path.name}[/dim]\n")
+        
+        console.print("[bold]Step 1: Checking prerequisites[/bold]")
+        with console.status("Checking tools..."):
+            prereqs = check_prerequisites()
+            
+        for tool, info in prereqs.items():
+            if info["available"]:
+                console.print(f"  [green]✔[/green] {tool} ({info['version']})")
+            else:
+                console.print(f"  [red]✘[/red] {tool} (Not found)")
+                
+        console.print("\n[bold]Step 2: Verifying env keys[/bold]")
+        with console.status("Checking .env file..."):
+            env_report = verify_env_keys(data, project_root)
+            
+        if not env_report["has_env_file"]:
+            console.print("  [red]✘[/red] No .env file found in project root.")
+            if env_report["missing"]:
+                console.print(f"    Missing keys: {', '.join(env_report['missing'])}")
+        else:
+            console.print("  [green]✔[/green] .env file found")
+            if env_report["present"]:
+                console.print(f"  [green]✔[/green] Present: {len(env_report['present'])} keys")
+            if env_report["missing"]:
+                console.print(f"  [red]✘[/red] Missing: {', '.join(env_report['missing'])}")
+                
+        console.print("\n[bold]Step 3: Installing packages[/bold]")
+        with console.status("Running pip install..."):
+            pkg_report = install_packages(data)
+            
+        if pkg_report["installed"]:
+            console.print(f"  [green]✔[/green] Installed {len(pkg_report['installed'])} packages")
+        if pkg_report["skipped"]:
+            console.print(f"  [yellow]~[/yellow] Skipped {len(pkg_report['skipped'])} system packages")
+        if pkg_report["failed"]:
+            console.print(f"  [red]✘[/red] Failed to install {len(pkg_report['failed'])} packages")
+            console.print(f"    Failed: {', '.join(pkg_report['failed'])}")
+            
+        warnings = data.get("migration_warnings", [])
+        if warnings:
+            console.print("\n[yellow]Migration Warnings:[/yellow]")
+            for w in warnings:
+                console.print(f"  - {w}")
+                
+        console.print("\n[green]Replay complete.[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Error during replay: {str(e)}[/red]")
+
 if __name__ == "__main__":
     main()
