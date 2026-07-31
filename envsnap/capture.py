@@ -268,6 +268,16 @@ def get_open_ports() -> list[dict[str, Any]] | None:
                 # Only include ports bound to all interfaces or localhost
                 pass  # still include — admins may bind to a specific IP
 
+            # Apply filtering rules
+            if conn.status and conn.status != "LISTEN":
+                continue
+            if laddr.port >= 10000:
+                continue
+            if laddr.port in (53, 67, 68, 631, 5353):
+                continue
+            if conn.pid is None and laddr.port >= 9000:
+                continue
+
             key = (conn.type, laddr.port)
             if key in seen:
                 continue
